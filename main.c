@@ -8,6 +8,8 @@
 #include <arpa/inet.h>
 #include <time.h>
 
+#define CHECK_FLAG(flags, mask) (((flags) & (mask)) == (mask))
+
 void packet_handler(u_char *user_data, const struct pcap_pkthdr *pkthdr, const u_char *packet){
     struct ether_header *eth_header;
     struct ip *ip_header;
@@ -43,6 +45,45 @@ void packet_handler(u_char *user_data, const struct pcap_pkthdr *pkthdr, const u
     printf("\n");    
 }
 
+void process_packet( u_char *user_data, const struct pcap_pkthdr *header, const u_char *packet){
+    struct ip *ip_hdr;
+    struct tcphdr *tcp_hdr;
+    int ip_header_len;
+
+    // Skip Ethernet heade
+    ip_hdr = (struct ip*)(packet + 14);
+
+    // IS it IPv4
+    if (ip_hdr->ip_v != 4)
+    {
+        return;
+    }
+
+    ip_header_len = ip_hdr->ip_hl * 4;
+    
+    //Get TCP header
+    tcp_hdr =(struct tcphdr*)((u_char *)ip_hdr + ip_header_len);
+    
+    // Check frags combine
+    if (CHECK_FLAG(tcp_hdr->th_flags, TH_SYN) && !CHECK_FLAG(tcp_hdr->th_flags, TH_ACK)){
+        printf("SYN: %s:%d -> %s:%d\n",
+            inet_ntoa(ip_hdr->ip_src), ntohs(tcp_hdr->th_sport),
+            inet_ntoa(ip_hdr->ip_dst), ntohs(tcp_hdr->th_dport));
+
+    }
+    else if (CHECK_FLAG(tcp_hdr->th_flags, TH_SYN | TH_ACK)){
+        printf("SYN-ACK: %s:%d -> %s:%d\n",
+            inet_ntoa(ip_hdr->ip_src), ntohs(tcp_hdr->th_sport),
+            inet_ntoa(ip_hdr->ip_dst), ntohs(tcp_hdr->th_dport));
+    }
+    else if (CHECK_FLAG(tcp_hdr->th_flags, TH_ACK) && !CHECK_FLAG(tcp_hdr->th_flags, TH_SYN)){
+        printf("ACK: %s:%d -> %s:%d\n",
+            inet_ntoa(ip_hdr->ip_src), ntohs(tcp_hdr->th_sport),
+            inet_ntoa(ip_hdr->ip_dst), ntohs(tcp_hdr->th_dport));
+    } 
+    
+    
+}
 // Function to list all avaliable network interface
 void list_interfaces(){
     pcap_if_t *all_devices;
@@ -146,7 +187,8 @@ int main(){
         free(device);
         return 1;        
     }
-    
+
+    // Device support Ethernet?
     if(pcap_datalink(handle) != DLT_EN10MB){
         fprintf(stderr, "Device dot'n support Ethernet");
         return 2;
@@ -167,7 +209,7 @@ int main(){
 
     // Start capturing packets
     printf("Starting packet capture on %s. Press Ctrl+C to stop. \n\n", device);
-    pcap_loop(handle, -1, packet_handler, NULL);
+    pcap_loop(handle, -1, process_packet, NULL);
 
     // Clean uo
     pcap_freecode(&fp);
