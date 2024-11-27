@@ -146,6 +146,11 @@ int main(){
         free(device);
         return 1;        
     }
+    
+    if(pcap_datalink(handle) != DLT_EN10MB){
+        fprintf(stderr, "Device dot'n support Ethernet");
+        return 2;
+    }
 
     // Compile and apply the filter
     if(pcap_compile(handle, &fp, filter_exp, 0, net) == -1){
